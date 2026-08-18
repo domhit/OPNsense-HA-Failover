@@ -420,10 +420,9 @@ final class FailoverManager
         $this->config->lock();
         try {
             $this->config->fromArray($configArray);
-            if (write_config($description) === false) {
-                $last_error = Config::getInstance()->getLastError();
-                throw new HAConfigurationException("Failed to write config: " . ($last_error ?? 'Unknown error'));
-            }
+            $this->config->save(['description' => $description]);
+        } catch (\Throwable $e) {
+            throw new HAConfigurationException("Failed to write config: " . $e->getMessage());
         } finally {
             $this->config->unlock();
         }
