@@ -110,15 +110,6 @@ ha_passive_enforcer_start()
     log "Stopping core HA-controlled services..."
     stop_service_list "$(jq -c '.ha_core_services' "$HA_CONF")" "$(jq -r '.ha_core_services[]? | "\(.name):\(.pid_file):\(.shutdown_timeout // 10)"' "$HA_CONF")"
 
-    log "Setting default routes via dedicated script..."
-    if [ $IS_DRY_RUN -eq 1 ]; then
-        log "DRY RUN: Would execute /usr/local/etc/rc.syshook.d/98-ha_set_routes.php"
-    elif /usr/local/etc/rc.syshook.d/98-ha_set_routes.php; then
-        log "Default routes configured successfully."
-    else
-        log "ERROR: Failed to configure default routes. Check system logs for details."
-    fi
-
     [ $IS_DRY_RUN -eq 1 ] && log "========= Finished DRY RUN ========="
 }
 
