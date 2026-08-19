@@ -3,10 +3,14 @@
 
 /*
  * OPNsense HA Failover Script for Single WAN IP (Hardened Version)
- * Version: 15.6 - Final Production Version with Structured Logging
+ * Version: 15.6.1 - Final Production Version with Structured Logging
  * - All logging is now in structured JSON format for modern observability.
  * - Added comprehensive PHPDoc blocks to all classes and methods.
  * - Represents the final, hardened, and documented production-ready version.
+ * - .1 version for fixing it with OPNSense26.7.2_2:
+ *     - change save of config
+ *     - add gateway switch logic to main script, base version was not working for me
+ *     - UNTESTED FOR IPV6! I don't have that.
  */
 declare(strict_types=1);
 
@@ -52,8 +56,8 @@ enum CarpStatus: string {
  */
 final class SettingsDTO
 {
-    public readonly string $wanInterfaceKey, $tunnelInterfaceKey, $wanMode, $wanGatewayName;
-    public readonly ?string $wanIpv4, $tunnelGatewayName, $localHealthCheckTarget;
+    public readonly string $wanInterfaceKey, $tunnelInterfaceKey, $wanMode, $wanGatewayName, $failoverGatewayName;
+    public readonly ?string $wanIpv4, $tunnelGatewayName, $localHealthCheckTarget; //for ipv6 add (check following comments in consturctor and handleMaster/BackupTransition): $failoverGatewayNameV6
     public readonly ?int $wanSubnetV4;
     public readonly array $healthCheckTargetsV4, $healthCheckTargetsV6, $coreServices, $standardServices;
     public readonly int $masterTransitionDelay, $eventCooldownPeriod, $pingTimeout, $routeSettleDelay, $lockWaitTimeout, $healthCheckRetries, $healthCheckRetryDelay, $serviceVerifyTimeout;
@@ -84,6 +88,20 @@ final class SettingsDTO
         if (!preg_match('/^[a-zA-Z0-9_-]+$/', $this->wanGatewayName)) throw new HAConfigurationException("network.wan_gateway_name contains invalid characters.");
         $this->tunnelGatewayName = $network['tunnel_gateway_name'] ?? null;
         if ($this->tunnelGatewayName && !preg_match('/^[a-zA-Z0-9_-]+$/', $this->tunnelGatewayName)) throw new HAConfigurationException("network.tunnel_gateway_name contains invalid characters.");
+
+        // Failover Gateway Validation
+        $failoverGateways = $config['failover_gateways'] ?? [];
+        $this->failoverGatewayName = $failoverGateways['ipv4'] ?? 'LAN_FAILOVER_GW';
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $this->failoverGatewayName)) {
+            throw new HAConfigurationException("failover_gateways.ipv4 contains invalid characters.");
+        }
+
+        /*
+        // Failover Gateway IPv6 Validation | NOT TESTED! | check SettingsDTO and handleMaster/Backup transition
+        $this->failoverGatewayNameV6 = isset($failoverGateways['ipv6']) ? (string)$failoverGateways['ipv6'] : null;
+        if ($this->failoverGatewayNameV6 && !preg_match('/^[a-zA-Z0-9_-]+$/', $this->failoverGatewayNameV6)) {
+            throw new HAConfigurationException("failover_gateways.ipv6 contains invalid characters.");
+        }*/
 
         // Health Check Validation
         $health = $config['health_check'] ?? [];
@@ -299,7 +317,26 @@ final class FailoverManager
 
         $this->cleanupOldBackups();
         $backup_path = $this->createConfigBackup();
-
+        // gateway switch
+        $this->config->lock();
+        try {
+            $this->setGatewayDisabled($this->settings->wanGatewayName, false);
+            $this->setGatewayDisabled($this->settings->failoverGatewayName, true);
+            $this->config->save(['description' => 'HA Failover: Gateway switch (MASTER)']);
+        } catch (\Throwable $e) {
+            $this->structuredLog('gateway_switch_failed', ['error' => $e->getMessage()], LOG_ERR);
+        } finally {
+            $this->config->unlock();
+        }
+        /*
+         / /* gateway v6 switch | NOT TESTED | check SettingsDTO, construct and handleBackupTrasnsition
+         if (!empty($this->settings->tunnelInterfaceKey) && !empty($this->settings->tunnelGatewayName)) {
+             $this->setGatewayDisabled($this->settings->tunnelGatewayName, false);
+         }
+         if (!empty($this->settings->failoverGatewayNameV6)) {
+             $this->setGatewayDisabled($this->settings->failoverGatewayNameV6, true);
+        }
+        */
         $this->config->forceReload();
         $configArray = $this->config->toArray(listtags());
 
@@ -307,7 +344,7 @@ final class FailoverManager
             $configArray['interfaces'][$this->settings->wanInterfaceKey]['ipaddr'] = 'dhcp';
             unset($configArray['interfaces'][$this->settings->wanInterfaceKey]['subnet']);
         } else {
-            if ($this->wanMode === 'static') {
+            if ($this->settings->wanMode === 'static') {
                 $configArray['interfaces'][$this->settings->wanInterfaceKey]['ipaddr'] = $this->settings->wanIpv4;
                 $configArray['interfaces'][$this->settings->wanInterfaceKey]['subnet'] = $this->settings->wanSubnetV4;
             }
@@ -327,6 +364,8 @@ final class FailoverManager
             $this->structuredLog('config_apply_error', ['error' => $e->getMessage(), 'backup_path' => $backup_path], LOG_CRIT);
             return false;
         }
+
+
 
         sleep($this->settings->masterTransitionDelay);
 
@@ -371,6 +410,28 @@ final class FailoverManager
         }
 
         if (!$this->applyConfigurationWithRetry('HA Failover: Deactivating to BACKUP state', $configArray)) return false;
+
+        // gateway switch
+        $this->config->lock();
+        try {
+            $this->setGatewayDisabled($this->settings->wanGatewayName, true);
+            $this->setGatewayDisabled($this->settings->failoverGatewayName, false);
+            $this->config->save(['description' => 'HA Failover: Gateway switch (BACKUP)']);
+        } catch (\Throwable $e) {
+            $this->structuredLog('gateway_switch_failed', ['error' => $e->getMessage()], LOG_ERR);
+        } finally {
+            $this->config->unlock();
+        }
+        /*
+        // gateway v6 switch | NOT TESTED | check SettingsDTO, construct and handleMasterTrasnsition
+        if (!empty($this->settings->tunnelInterfaceKey) && !empty($this->settings->tunnelGatewayName)) {
+            $this->setGatewayDisabled($this->settings->tunnelGatewayName, false);
+        }
+        if (!empty($this->settings->failoverGatewayNameV6)) {
+            $this->setGatewayDisabled($this->settings->failoverGatewayNameV6, true);
+        }
+        */
+
 
         $this->structuredLog('backup_transition_complete', [], LOG_NOTICE);
         return true;
@@ -431,7 +492,36 @@ final class FailoverManager
         } catch (\Exception $e) {
             throw new HANetworkException("Error during interface reconfigure: " . $e->getMessage());
         }
+        
+        // Restart gateway Monitoring (dpinger)
+        $monitorResult = mwexecfm('/usr/local/sbin/pluginctl -c monitor');
+        if ($monitorResult !== 0) {
+            $this->structuredLog('gateway_monitor_restart_failed', ['exit_code' => $monitorResult], LOG_WARNING);
+        }
+        
         return true;
+    }
+
+    /**
+     * Enables or disables the named gateway via the MVC-Model-API.
+     * @param string $gatewayName Name of the gateway (e.g. "WAN_DHCP")
+     * @param bool $disabled true = disable, false = enable
+     */
+    private function setGatewayDisabled(string $gatewayName, bool $disabled): void
+    {
+        $mdlGateways = new \OPNsense\Routing\Gateways();
+        $found = false;
+        foreach ($mdlGateways->gateway_item->iterateItems() as $node) {
+            if ((string)$node->name === $gatewayName) {
+                $node->disabled = $disabled ? '1' : '0';
+                $found = true;
+            }
+        }
+        if (!$found) {
+            $this->structuredLog('gateway_not_found', ['gateway' => $gatewayName], LOG_WARNING);
+            return;
+        }
+        $mdlGateways->serializeToConfig();
     }
 
     /**
