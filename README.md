@@ -30,7 +30,7 @@ This project builds upon earlier single-script approaches to OPNsense high avail
 
 The evolution from single-script to multi-script architecture reflects lessons learned from real-world deployments and the need for enterprise-grade reliability in critical network infrastructure.
 
-**Current Solution**: Script was not working for me on OPNsense 26.7.2_2. Main problem was config save function that maybe changed in OPNsense since then. But I did not check the Changentos. I'm not a programmer at all. I never touched php code before. Debugging was done with the support auf claude and chatgpt. All code changes where manually done by me. I also added the IPv6 idea of the new gateway enable/disable logic, but this is untested, because I hoave no IPv6 setup. I don't know if the new gateway logic is better or not, but it works for my setup.
+**Current Solution**: Script was not working for me on OPNsense 26.7.2_2. Main problem was config save function that maybe changed in OPNsense since then. But I did not check the Changenlogs. I'm not a programmer at all. I never touched php code before. Debugging was done with the support auf claude and chatgpt. All code changes where manually done by me. I also added the IPv6 idea of the new gateway enable/disable logic, but this is untested, because I hoave no IPv6 setup. I don't know if the new gateway logic is better or not, but it works for my setup.
 
 ## 📋 Prerequisites
 
