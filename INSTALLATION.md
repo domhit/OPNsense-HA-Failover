@@ -9,6 +9,9 @@ This guide provides step-by-step instructions for installing the OPNsense HA Fai
 - Dedicated synchronization interface between firewalls
 - Network access for file transfers
 
+### Not tested feature IPv6
+If you use IPv6 the logic in 10-failover.php is not tested and commented out. There are 4 spots where you have to remove the comment markers: SettingsDTO (line 60), __construct (lines 99-104), handleMasterTrasnsition (lines 331-339) and handleBackupTransition (lines 425-433).
+
 ### Pre-Installation Checklist
 - [ ] OPNsense firewalls are running and accessible
 - [ ] CARP is configured and working
@@ -55,12 +58,6 @@ chmod +x /usr/local/etc/validate_ha_config.php
 ```bash
 # Copy 10-failover.php to /usr/local/etc/rc.syshook.d/carp/
 chmod +x /usr/local/etc/rc.syshook.d/carp/10-failover.php
-```
-
-#### Route Management Script
-```bash
-# Copy 98-ha_set_routes.php to /usr/local/etc/rc.syshook.d/
-chmod +x /usr/local/etc/rc.syshook.d/98-ha_set_routes.php
 ```
 
 #### Boot Enforcer Script
@@ -143,7 +140,6 @@ Ensure all files are identical on both firewalls:
 md5 /usr/local/etc/ha_failover.conf
 md5 /usr/local/etc/validate_ha_config.php
 md5 /usr/local/etc/rc.syshook.d/carp/10-failover.php
-md5 /usr/local/etc/rc.syshook.d/98-ha_set_routes.php
 md5 /usr/local/etc/rc.d/99-ha_passive_enforcer.sh
 ```
 
@@ -189,7 +185,6 @@ Remove primary firewall from maintenance mode:
 chmod 600 /usr/local/etc/ha_failover.conf
 chmod +x /usr/local/etc/validate_ha_config.php
 chmod +x /usr/local/etc/rc.syshook.d/carp/10-failover.php
-chmod +x /usr/local/etc/rc.syshook.d/98-ha_set_routes.php
 chmod +x /usr/local/etc/rc.d/99-ha_passive_enforcer.sh
 ```
 
@@ -238,7 +233,6 @@ If installation fails and you need to rollback:
    rm -f /usr/local/etc/ha_failover.conf
    rm -f /usr/local/etc/validate_ha_config.php
    rm -f /usr/local/etc/rc.syshook.d/carp/10-failover.php
-   rm -f /usr/local/etc/rc.syshook.d/98-ha_set_routes.php
    rm -f /usr/local/etc/rc.d/99-ha_passive_enforcer.sh
    ```
 
