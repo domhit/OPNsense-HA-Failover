@@ -32,6 +32,9 @@ This project builds upon the foundational work of:
 - **lavacano**: Enhanced iterations and production improvements  
   - GitHub Gist: https://gist.github.com/lavacano/a678e65d31df9bec344e572461ed3e10
 
+- **msz345**: Complete redesign with multi-script architecture  
+  - GitHub Repo: https://github.com/msz345/OPNsense-HA-Failover
+  - 
 ## Disclaimer
 
 This software is designed for use with OPNsense firewall systems. Users are
