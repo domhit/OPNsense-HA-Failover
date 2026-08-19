@@ -21,7 +21,7 @@ This project builds upon earlier single-script approaches to OPNsense high avail
 
 **Iterative Development**: [lavacano's enhanced versions](https://gist.github.com/lavacano/a678e65d31df9bec344e572461ed3e10) expanded on the original concept with improved error handling, additional service management, and better logging capabilities. These iterations identified key pain points and reliability issues in production environments.
 
-**Current Solution**: This multi-script architecture represents a complete redesign addressing the limitations discovered in single-script approaches:
+**MSZ345 Solution (base of this fork)**: This multi-script architecture represents a complete redesign addressing the limitations discovered in single-script approaches:
 
 - **Separation of Concerns**: Distinct scripts for different phases (boot enforcement, live failover, route management)
 - **Production Hardening**: Comprehensive error handling, circuit breakers, and failure tracking
@@ -29,6 +29,8 @@ This project builds upon earlier single-script approaches to OPNsense high avail
 - **Maintainability**: Centralized configuration and modular design for easier customization
 
 The evolution from single-script to multi-script architecture reflects lessons learned from real-world deployments and the need for enterprise-grade reliability in critical network infrastructure.
+
+**Current Solution**: Script was not working for me on OPNsense 26.7.2_2. Main problem was config save function that maybe changed in OPNsense since then. But I did not check the Changentos. I'm not a programmer at all. I never touched php code before. Debugging was done with the support auf claude and chatgpt. All code changes where manually done by me. I also added the IPv6 idea of the new gateway enable/disable logic, but this is untested, because I hoave no IPv6 setup. I don't know if the new gateway logic is better or not, but it works for my setup.
 
 ## 📋 Prerequisites
 
@@ -91,7 +93,6 @@ Copy the following files to both firewalls:
 | `ha_failover.conf`          | `/usr/local/etc/`                   | Central configuration   |
 | `validate_ha_config.php`    | `/usr/local/etc/`                   | Configuration validator |
 | `10-failover.php`           | `/usr/local/etc/rc.syshook.d/carp/` | Main failover logic     |
-| `98-ha_set_routes.php`      | `/usr/local/etc/rc.syshook.d/`      | Route management        |
 | `99-ha_passive_enforcer.sh` | `/usr/local/etc/rc.d/`              | Boot-time enforcer      |
 
 ### Step 3: Set Permissions
@@ -101,7 +102,6 @@ Copy the following files to both firewalls:
 chmod 600 /usr/local/etc/ha_failover.conf
 chmod +x /usr/local/etc/validate_ha_config.php
 chmod +x /usr/local/etc/rc.syshook.d/carp/10-failover.php
-chmod +x /usr/local/etc/rc.syshook.d/98-ha_set_routes.php
 chmod +x /usr/local/etc/rc.d/99-ha_passive_enforcer.sh
 ```
 
