@@ -178,7 +178,7 @@ final class FailoverManager
             $manager = self::create($argv);
             if ($manager === null) return 1;
             return $manager->run($argv);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Use structured log for the final catch-all
             $logData = ['timestamp' => date('c'), 'event' => 'critical_error_initialization', 'pid' => getmypid(), 'context' => ['error' => $e->getMessage()]];
             syslog(LOG_CRIT, json_encode($logData));
@@ -365,7 +365,11 @@ final class FailoverManager
             return false;
         }
 
-
+        // Bring WAN interface UP
+        $realWanIf = get_real_interface($this->settings->wanInterfaceKey);
+        if ($realWanIf) {
+            mwexecfm('/sbin/ifconfig %s up', [$realWanIf]);
+        }
 
         sleep($this->settings->masterTransitionDelay);
 
@@ -400,6 +404,21 @@ final class FailoverManager
 
         killbypid("/var/run/dpinger_{$this->settings->wanGatewayName}.pid");
 
+        $realWanIf = get_real_interface($this->settings->wanInterfaceKey);
+        if ($realWanIf) {
+            $pidFile = "/var/run/dhclient.{$realWanIf}.pid";
+            if (file_exists($pidFile)) {
+                $supervisorPid = (int)trim(file_get_contents($pidFile));
+                if ($supervisorPid > 0) {
+                    mwexecfm('/bin/kill -9 %s', [(string)$supervisorPid]);
+                }
+            }
+            mwexecfm('/bin/pkill -9 -f %s', ['dhclient']);
+
+            // Bring WAN interface DOWN
+            mwexecfm('/sbin/ifconfig %s down', [$realWanIf]);
+        }
+
         $this->config->forceReload();
         $configArray = $this->config->toArray(listtags());
         unset($configArray['interfaces'][$this->settings->wanInterfaceKey]['enable']);
@@ -431,7 +450,6 @@ final class FailoverManager
             $this->setGatewayDisabled($this->settings->failoverGatewayNameV6, true);
         }
         */
-
 
         $this->structuredLog('backup_transition_complete', [], LOG_NOTICE);
         return true;
@@ -492,13 +510,13 @@ final class FailoverManager
         } catch (\Exception $e) {
             throw new HANetworkException("Error during interface reconfigure: " . $e->getMessage());
         }
-        
+
         // Restart gateway Monitoring (dpinger)
         $monitorResult = mwexecfm('/usr/local/sbin/pluginctl -c monitor');
         if ($monitorResult !== 0) {
             $this->structuredLog('gateway_monitor_restart_failed', ['exit_code' => $monitorResult], LOG_WARNING);
         }
-        
+
         return true;
     }
 
